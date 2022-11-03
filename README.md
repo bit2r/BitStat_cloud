@@ -1,2 +1,1 @@
-# BitStat_cloud
-BitStat for shinyapps.io
+# BitStat-demo

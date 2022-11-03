@@ -1,0 +1,137 @@
+---
+title: "&nbsp;"
+output: 
+  html_document:
+    number_sections: false
+    toc: false    
+    css: theme.css
+---
+
+```{r prepare, echo=FALSE, message=FALSE, warning=FALSE}
+library(flextable)
+library(dplyr)
+library(dlookr)
+library(ggplot2)
+
+id_dataset <- "$id_dataset$"
+variables <- "$variables$"
+plot_flag <- $plot_flag$  
+```
+
+```{r title-summary-category, echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
+htmltools::h3(
+  translate("범주형 변수 집계 테이블")
+)
+```
+
+```{r content-summary-category, echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
+.data <- get("list_datasets", envir = .BitStatEnv) %>% 
+  "[["(id_dataset) %>% 
+  "[["("dataset")
+  
+if (!variables[1] %in% "") {
+  variables <- variables %>% 
+  strsplit(",") %>% 
+  unlist() 
+}
+
+if (!variables[1] %in% "") {  
+  summ_category <- .data %>% 
+    select(all_of(variables)) %>% 
+    dlookr::univar_category()     
+} else {
+  summ_category <- .data %>% 
+    dlookr::univar_category()     
+}  
+
+length(summ_category) %>% 
+  seq() %>% 
+  purrr::walk(
+    function(x) {
+      variable <- names(summ_category)[x]
+      htmltools::h4(
+        translate(glue::glue("{variable}의 분포 현황"), "kr", variable)
+      ) %>% 
+        as.character() %>%
+        cat()  
+      
+      summ_category[[x]] %>% 
+        mutate(rate = rate * 100) %>% 
+        rename(percent = rate) %>% 
+        flextable::flextable() %>%
+        flextable::colformat_double(digits = 2) %>% 
+        flextable::set_caption(caption = translate("돗수분포표")) %>% 
+        flextable::theme_booktabs() %>% 
+        flextable::flextable_to_rmd()
+      
+      html_br()
+    }
+  )
+
+```
+
+```{r title-plot-category, echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
+if (plot_flag) {
+  htmltools::br()
+  
+  htmltools::h3(
+    translate("범주형 변수 플롯")
+  )
+}
+```
+
+```{r content-plot-category, echo=FALSE, message=FALSE, warning=FALSE, fig.align='center', out.width='75%', results='asis'}
+if (plot_flag) {
+  variables <- attr(summ_category, "variables")
+  
+  variables %>% 
+    purrr::walk(
+      function(x) {
+        variable <- x
+        htmltools::h4(
+          translate(glue::glue("{variable}의 분포 현황"), "kr", variable)
+        ) %>% 
+          as.character() %>%
+          cat()  
+        
+        df <- summ_category %>% 
+          "[["(variable) %>% 
+          select(variable = 1, 2:3) %>% 
+          filter(!is.na(variable))
+          
+        obj <- df %>% 
+          ggplot(aes(variable, n, fill = variable)) +
+          geom_bar(stat = "identity") + 
+          ylab("Frequency") +
+          ggtitle(sprintf("Bar plot of %s", variable)) +
+          xlab(variable) + 
+          theme(legend.position = "None") +
+          theme(plot.title = element_text(hjust = 0.5))
+    
+        n_level <- nrow(df) 
+        if (n_level <= 9) {
+          obj <- obj +
+            dlookr:::theme_typographic("NanumSquare") +
+            hrbrthemes::scale_fill_ipsum() +
+            theme(legend.position = "None",
+                  axis.title.x = element_text(size = 13),
+                  axis.title.y = element_text(size = 13)
+            )      
+        } else {
+          obj <- obj +
+            dlookr:::theme_typographic("NanumSquare") +
+            hrbrthemes::scale_fill_manual(values = rep("#d18975", n_level)) + 
+            theme(legend.position = "None",
+                  axis.title.x = element_text(size = 13),
+                  axis.title.y = element_text(size = 13)
+            )   
+        }
+        
+        suppressWarnings(print(obj))
+    
+        html_br()
+      }
+    )
+}
+```
+

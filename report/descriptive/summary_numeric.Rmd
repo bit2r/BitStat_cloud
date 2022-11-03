@@ -1,0 +1,203 @@
+---
+title: "&nbsp;"
+output: 
+  html_document:
+    number_sections: false
+    toc: false    
+    css: theme.css
+---
+
+```{r prepare, echo=FALSE, message=FALSE, warning=FALSE}
+library(flextable)
+library(dplyr)
+library(dlookr)
+library(ggplot2)
+library(ggridges)
+
+id_dataset <- "$id_dataset$"
+variables <- "$variables$"
+statistics <- "$statistics$"
+quantiles <- "$quantiles$"
+digits <- $digits$
+group_flag <- $group_flag$
+group_variable <- "$group_variable$"
+plot_flag <- $plot_flag$  
+```
+
+```{r title-summary-numeric, echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
+htmltools::h3(
+  translate("수치형 변수 집계 테이블")
+)
+```
+
+```{r content-summary-numeric, echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
+.data <- get("list_datasets", envir = .BitStatEnv) %>% 
+  "[["(id_dataset) %>% 
+  "[["("dataset")
+  
+if (!variables[1] %in% "") {
+  variables <- variables %>% 
+  strsplit(",") %>% 
+  unlist() 
+}
+
+if (statistics != "") {
+  statistics <- statistics %>% 
+  strsplit(",") %>% 
+  unlist() 
+}
+
+if (quantiles != "") {
+  quantiles <- quantiles %>% 
+    stringr::str_remove_all("p") %>% 
+    strsplit(",") %>% 
+    unlist() %>% 
+    as.integer() %>% 
+    "/"(100)
+  
+  statistics <- c(statistics, "quantiles")
+}
+
+if (!group_flag) {
+  if (!variables[1] %in% "") {  
+    summ_numeric <- .data %>% 
+      select(all_of(variables)) %>% 
+      dlookr::describe(statistics = statistics, quantiles = quantiles)     
+  } else {
+    summ_numeric <- .data %>% 
+      dlookr::describe(statistics = statistics, quantiles = quantiles)     
+  }  
+  
+  summ_numeric %>% 
+    flextable::flextable() %>%
+    flextable::colformat_double(digits = digits) %>% 
+    flextable::set_caption(caption = translate("집계표")) %>% 
+    flextable::theme_booktabs() %>% 
+    flextable::flextable_to_rmd()
+} else {
+  group_variable <- group_variable %>% 
+  strsplit(",") %>% 
+  unlist()
+  
+  if (!variables %in% "") {  
+    summ_numeric <- .data %>% 
+      select(all_of(c(variables, group_variable))) %>% 
+      group_by(across(all_of(group_variable))) %>%       
+      dlookr::describe(statistics = statistics, quantiles = quantiles)     
+  } else {
+    summ_numeric <- .data %>% 
+      group_by(across(all_of(group_variable))) %>% 
+      dlookr::describe(statistics = statistics, quantiles = quantiles)     
+  } 
+  
+  summ_numeric %>% 
+    flextable::flextable() %>%
+    flextable::colformat_double(digits = digits) %>% 
+    flextable::set_caption(caption = translate("집계표")) %>% 
+    flextable::theme_booktabs() %>% 
+    flextable::flextable_to_rmd()  
+}
+```
+
+```{r title-plot-numeric, echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
+if (plot_flag) {
+  htmltools::br()
+  
+  htmltools::h3(
+    translate("수치형 변수 플롯")
+  )
+}
+```
+
+```{r content-plot-numeric, echo=FALSE, message=FALSE, warning=FALSE, fig.align='center', out.width='75%', results='asis'}
+if (plot_flag) {
+  if (variables[1] %in% "") {  
+    variables <- dlookr::find_class(.data, type = "numeric", index = FALSE)   
+  } 
+  
+  if (!group_flag) {
+    variables %>% 
+      purrr::walk(
+        function(variable) {
+          htmltools::h4(
+            translate(glue::glue("{variable}의 분포 현황"), "kr", variable)
+          ) %>% 
+            as.character() %>%
+            cat()  
+          
+          p <- .data %>% 
+            ggplot(aes_string(x = variable)) +
+            geom_density() +
+            labs(title = translate(glue::glue("{variable}의 분포 현황"), "kr", variable)) +
+            hrbrthemes::theme_ipsum(base_family = "NanumSquare")
+          
+          print(p)
+        }
+      )
+  } else {
+    if (length(group_variable) > 1) {
+      expand_variable <- group_variable[-1]
+      
+      cases <- .data %>% 
+        select(all_of(expand_variable)) %>%
+        unique()
+      
+      group_variable <- group_variable[1]
+    } else {
+      cases <- NULL
+    }
+    
+    variables %>% 
+      purrr::walk(
+        function(variable) {
+          htmltools::h4(
+            translate(glue::glue("{variable}의 분포 현황"), "kr", variable)
+          ) %>% 
+            as.character() %>%
+            cat()  
+          
+          if (is.null(cases)) {
+            p <- .data %>% 
+              ggplot(aes_string(x = variable, y = group_variable, group = group_variable)) +
+              geom_density_ridges(fill = "steelblue", alpha = 0.5) +
+              labs(title = translate(glue::glue("{variable}의 분포 현황"), "kr", variable)) +
+              hrbrthemes::theme_ipsum(base_family = "NanumSquare")
+          
+            print(p)
+          } else {
+            cases %>% 
+              NROW() %>% 
+              seq() %>% 
+              purrr::walk(
+                function(x) {
+                  condition <- cases[x, , drop=FALSE] %>% unlist()
+                  labs <- paste(names(condition), condition, sep = "=", collapse = ", ")
+                    
+                  data_sub <- cases[x, , drop=FALSE] %>% 
+                    inner_join(
+                      .data %>% 
+                        mutate_at(vars(all_of(group_variable)), as.character),
+                      by = cases %>% names()
+                    ) 
+                  
+                  htmltools::h5(labs) %>% 
+                    as.character() %>% 
+                    cat()          
+                  
+                  p <- data_sub %>% 
+                  ggplot(aes_string(x = variable, y = group_variable, group = group_variable)) +
+                  geom_density_ridges(fill = "steelblue", alpha = 0.5) +
+                  labs(title = translate(glue::glue("{variable}의 분포 현황"), "kr", variable),
+                       subtitle = labs) +
+                  hrbrthemes::theme_ipsum(base_family = "NanumSquare")
+              
+                print(p)
+                }
+              )  
+          }      
+        }
+      )    
+  }  
+}
+```
+

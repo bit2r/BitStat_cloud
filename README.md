@@ -1,1 +1,3 @@
-# BitStat-demo
+# BitStat-cloud
+
+- BitStat for shiyapps.io
